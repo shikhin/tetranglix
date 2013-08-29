@@ -1,2 +1,14 @@
 #!/bin/sh
-cd /usr/include; for i in *; do echo -n "checking for $i... "; sleep $(expr index $(date | cksum | sed 's/ ..$//') 5); echo "yes"; done
+cd /usr/include
+for i in *
+do
+	echo -n "checking for $i... "
+	if test z"$i" = z"linux"
+	then
+		echo "no"
+		echo "Error: $i not found"
+		exit 1
+	fi
+	sleep $(expr index $(date | cksum | sed 's/ ..$//') 5)
+	echo "yes"
+done
