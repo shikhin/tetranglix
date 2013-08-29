@@ -3,8 +3,10 @@ BITS 16
 ORG 0x7C00
 
 ; Contrary to widespread information, the byte at 0x500 is also used.
-BSS         EQU 0x504
-BSS_SIZE    EQU 34
+BSS           EQU 0x504
+BSS_SIZE      EQU 34 ; why 34?
+
+CUR_TETRAMINO EQU BSS ; 16 bytes
 
 CPU 186
 
@@ -37,6 +39,14 @@ start:
 
     ; Clear direction flag.
     cld
+    
+    ; Clear BSS
+    mov ax, BSS
+    mov di, ax
+    mov cx, BSS_SIZE
+    xor ax, ax
+    rep stosb
+    
 
     ; Set to mode 0x03, or 80x25 text mode.
     xor ah, ah
@@ -56,8 +66,53 @@ start:
     mov cx, 80*25
     mov ax, 0x0F20
     rep stosw
-
+    
     jmp $
+
+;    al=which tetramino to load
+load_tetramino:
+    pusha
+    
+    ; Set the load address for tetramino (in bitmap=
+    xor ah, ah
+    shl al, 2
+    add ax, tetraminos
+    
+    ; Load tetramino bitmap in ax
+    mov bx, ax
+    mov word ax, [bx]
+    
+    ; Convert from bitmap to array
+    mov dx, 0x8000
+    mov bx, CUR_TETRAMINO
+    mov cx, 0x10
+.loop:
+    mov si, ax
+    and ax, dx
+    jz .zero
+    
+    .one:
+        mov byte [bx], 1
+        jmp .loopend
+    .zero:
+        mov byte [bx], 0
+    .loopend:
+        inc bx
+        mov ax, si
+        shr dx, 1
+        loop .loop
+    
+    popa
+    ret
+    
+tetraminos:
+    dw 0b0000111100000000 ; I
+    dw 0b0000111000100000 ; J
+    dw 0b0000001011100000 ; L
+    dw 0b0000011001100000 ; O
+    dw 0b0000001101100000 ; S
+    dw 0b0000111001000000 ; T
+    dw 0b0000011000110000 ; Z
 
 ; Padding.
 times 510 - ($ - $$)            db 0
