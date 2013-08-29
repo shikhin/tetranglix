@@ -10,7 +10,7 @@ MAKEDEPS := Makefile
 all: $(OUTIMG)
 
 # List phony targets.
-.PHONY: all clean
+.PHONY: all clean dog
 
 $(OUTIMG): $(ASMSRC) $(MAKEDEPS) 
 	nasm $(ASMSRC) -fbin -o $(OUTIMG)
