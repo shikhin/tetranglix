@@ -3,7 +3,7 @@ BITS 16
 ORG 0x7C00
 
 BSS             EQU 0x504     ; The byte at 0x500 is also used, so align on next dword bound.
-BSS_SIZE        EQU 34        ; 16 for CUR_TETRAMINO, 16 for FLIP_TETRAMINO, 2 for (x, y) coordinate pair.
+BSS_SIZE        EQU 34        ; 16 for CUR_TETRAMINO, 16 for FLIP_TETRAMINO, 2 for (x, y) into field.
 
 CUR_TETRAMINO   EQU BSS       ; 16 bytes.
 FLIP_TETRAMINO  EQU BSS + 16  ; 16 bytes.
@@ -49,7 +49,6 @@ start:
     xor ax, ax
     rep stosb
     
-
     ; Set to mode 0x03, or 80x25 text mode.
     xor ah, ah
     mov al, 0x03
@@ -66,7 +65,7 @@ start:
     ; White spaces on black background.
     xor di, di
     mov cx, 80*25
-    mov ax, 0x0F20
+    mov ax, 0x0F00
     rep stosw
 
     jmp $
@@ -78,7 +77,7 @@ load_tetramino:
 
     ; Get the address of the tetramino (in bitmap format).
     xor ah, ah
-    shl al, 2
+    shl al, 1
     add ax, tetraminos
 
     ; Load tetramino bitmap in ax.
@@ -93,11 +92,12 @@ load_tetramino:
         test ax, dx
         jz .zero
     
-            mov byte [bx], 1
+            mov byte [bx], 0xDB     ; Full block.
             jmp .loop_end
     
         .zero:
-            mov byte [bx], 0
+            xor cl, cl
+            mov [bx], cl
     
     .loop_end:
         inc bx
@@ -107,6 +107,49 @@ load_tetramino:
     
     popa
     ret
+
+; Displays CUR_TETRAMINO at current OFFSET.
+display_tetramino:
+    pusha
+
+    ; Calculate first index into screen.
+    mov al, [OFFSET + 1]
+    mov cl, 80
+    mul cl
+
+    mov bx, ax
+    add bx, [OFFSET]
+    add bx, 35
+
+    shl bx, 1
+
+    ; Loops for 16 characters.
+    mov cl, 0x10
+    mov si, CUR_TETRAMINO
+
+    .loop:
+        test cl, cl
+        jz .ret
+        
+        dec cl
+
+        mov dl, [si]
+        mov [es:bx], dl
+
+        inc bx
+        inc bx
+        inc si
+
+        test cl, 0b11
+        jnz .loop
+
+        ; A multiple of 4, skip to next line.
+        add bx, (80 - 4) * 2
+        jmp .loop
+
+    .ret:
+        popa
+        ret
 
 ; All tetraminos in bitmap format.
 tetraminos:
@@ -119,10 +162,10 @@ tetraminos:
     dw 0b0000011000110000   ; Z
 
 ; Padding.
-;times 510 - ($ - $$)            db 0
+times 510 - ($ - $$)            db 0
 
 BIOS_signature:
     dw 0xAA55
 
 ; Pad to floppy disk.
-;times (1440 * 1024) - ($ - $$)  db 0
+times (1440 * 1024) - ($ - $$)  db 0
