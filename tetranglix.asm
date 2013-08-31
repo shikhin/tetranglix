@@ -9,7 +9,8 @@ CUR_TETRAMINO   EQU BSS       ; 16 bytes.
 ROT_TETRAMINO   EQU BSS + 16  ; 16 bytes.
 OFFSET          EQU BSS + 32  ; 2 bytes.
 
-; TODO: tetramino_collision_check, stack_display, stack_join.
+; TODO: stack_display, tetramino_collision_check, main event loop, stack_join, scoring (if plausible).
+;       README.md, release, ..., PROFIT!
 
 CPU 186
 
