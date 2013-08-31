@@ -3,11 +3,13 @@ BITS 16
 ORG 0x7C00
 
 BSS             EQU 0x504     ; The byte at 0x500 is also used, so align on next dword bound.
-BSS_SIZE        EQU 34        ; 16 for CUR_TETRAMINO, 16 for FLIP_TETRAMINO, 2 for (x, y) into field.
+BSS_SIZE        EQU 34        ; 16 for CUR_TETRAMINO, 16 for ROT_TETRAMINO, 2 for (x, y) into field.
 
 CUR_TETRAMINO   EQU BSS       ; 16 bytes.
-FLIP_TETRAMINO  EQU BSS + 16  ; 16 bytes.
+ROT_TETRAMINO   EQU BSS + 16  ; 16 bytes.
 OFFSET          EQU BSS + 32  ; 2 bytes.
+
+; TODO: tetramino_collision_check, stack_display, stack_join.
 
 CPU 186
 
@@ -72,7 +74,7 @@ start:
 
 ; Load a tetramino to CUR_TETRAMINO, from the compressed bitmap format.
 ;     al -> tetramino index.
-load_tetramino:
+tetramino_load:
     pusha
 
     ; Get the address of the tetramino (in bitmap format).
@@ -96,8 +98,7 @@ load_tetramino:
             jmp .loop_end
     
         .zero:
-            xor cl, cl
-            mov [bx], cl
+            mov byte [bx], 0x52
     
     .loop_end:
         inc bx
@@ -109,7 +110,7 @@ load_tetramino:
     ret
 
 ; Displays CUR_TETRAMINO at current OFFSET.
-display_tetramino:
+tetramino_display:
     pusha
 
     ; Calculate first index into screen.
@@ -121,6 +122,7 @@ display_tetramino:
     add bx, [OFFSET]
     add bx, 35
 
+    ; One character takes 2 bytes in video memory.
     shl bx, 1
 
     ; Loops for 16 characters.
@@ -143,13 +145,52 @@ display_tetramino:
         test cl, 0b11
         jnz .loop
 
-        ; A multiple of 4, skip to next line.
+        ; Since each tetramino is 4x4, we must go to next line
+        ; at every multiple of 4.
         add bx, (80 - 4) * 2
         jmp .loop
 
     .ret:
         popa
         ret
+
+; Rotates CUR_TETRAMINO 90 degrees clock-wise.
+tetramino_rotate:
+    pusha
+    push es
+
+    xor ax, ax
+    mov es, ax
+
+    mov si, CUR_TETRAMINO
+    mov cx, 4
+
+    .loop:
+        mov di, ROT_TETRAMINO - 1
+        add di, cx
+
+        mov dl, 4
+
+        .line:
+            lodsb
+            stosb
+
+            ; One vertical line to write to ROT_TETRAMINO.
+            add di, 3
+
+            dec dl
+            jnz .line
+
+        loop .loop
+
+    mov si, ROT_TETRAMINO
+    mov di, CUR_TETRAMINO
+    mov cl, 4*4/2       ; CH would be zero, from above.
+    rep movsw
+
+    pop es
+    popa
+    ret
 
 ; All tetraminos in bitmap format.
 tetraminos:
