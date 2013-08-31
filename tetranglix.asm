@@ -172,8 +172,7 @@ tetramino_rotate:
         mov dl, 4
 
         .line:
-            lodsb
-            stosb
+            movsb
 
             ; One vertical line to write to ROT_TETRAMINO.
             add di, 3
