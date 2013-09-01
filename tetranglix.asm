@@ -52,7 +52,6 @@ start:
     mov di, ax
     mov cx, BSS_SIZE
     xor ax, ax
-    mov ax, 0x52
     rep stosb
     
     ; Set to mode 0x03, or 80x25 text mode.
@@ -102,7 +101,8 @@ tetramino_load:
             jmp .loop_end
     
         .zero:
-            mov byte [bx], 0x52
+            xor cl, cl
+            mov [bx], cl
     
     .loop_end:
         inc bx
@@ -124,12 +124,12 @@ tetramino_display:
 
     mov bx, ax
     add bx, [OFFSET]
-    add bx, 35
+    add bx, 30
 
     ; One character takes 2 bytes in video memory.
     shl bx, 1
 
-    ; Loops for 16 characters.
+    ; Loops for 16 input characters.
     mov cl, 0x10
     mov si, CUR_TETRAMINO
 
@@ -140,18 +140,21 @@ tetramino_display:
         dec cl
 
         mov dl, [si]
-        mov [es:bx], dl
 
-        inc bx
-        inc bx
+        ; Output two characters for "squarish" output.
+        mov [es:bx], dl
+        mov [es:bx + 2], dl
+
         inc si
+        add bx, 4
 
         test cl, 0b11
         jnz .loop
 
-        ; Since each tetramino is 4x4, we must go to next line
+        ; Since each tetramino input is 4x4, we must go to next line
         ; at every multiple of 4.
-        add bx, (80 - 4) * 2
+        ; Since we output 2 characters for one input char, cover offset of 8.
+        add bx, (80 - 8) * 2
         jmp .loop
 
     .ret:
@@ -202,20 +205,30 @@ stack_display:
     pusha
 
     ; Add 30 characters padding in the front.
-    mov di, 70
+    mov di, 60
     mov si, STACK
 
     .loop:
-        ; Copy 10 characters.
+        ; Frame characters: one character before 30, one character after 50.
+        mov byte [es:di - 2], 0xBA
+        mov byte [es:di + 40], 0xBA
+
+        ; Copy 20 characters.
         mov cx, 10
 
         .line:
-            movsb
+            lodsb
+
+            ; Store one character as two -- to make stack "squarish" on 80x25 display.
+            stosb
             inc di
+            stosb
+            inc di
+
             loop .line
 
         ; Handle remaining 30 characters in row, and starting 30 in next row.
-        add di, 140
+        add di, 120
         cmp di, (25 * 160)          ; If we go beyond the last row, we're over.
         jb .loop
 
