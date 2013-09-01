@@ -3,11 +3,13 @@ BITS 16
 ORG 0x7C00
 
 BSS             EQU 0x504     ; The byte at 0x500 is also used, so align on next dword bound.
-BSS_SIZE        EQU 34        ; 16 for CUR_TETRAMINO, 16 for ROT_TETRAMINO, 2 for (x, y) into field.
+BSS_SIZE        EQU 284       ; 16 for CUR_TETRAMINO, 16 for ROT_TETRAMINO, 2 for (x, y) into field.
+                              ; 250 for stack.
 
 CUR_TETRAMINO   EQU BSS       ; 16 bytes.
 ROT_TETRAMINO   EQU BSS + 16  ; 16 bytes.
 OFFSET          EQU BSS + 32  ; 2 bytes.
+STACK           EQU BSS + 34  ; 250 bytes.
 
 ; TODO: stack_display, tetramino_collision_check, main event loop, stack_join, scoring (if plausible).
 ;       README.md, release, ..., PROFIT!
@@ -50,6 +52,7 @@ start:
     mov di, ax
     mov cx, BSS_SIZE
     xor ax, ax
+    mov ax, 0x52
     rep stosb
     
     ; Set to mode 0x03, or 80x25 text mode.
@@ -160,6 +163,7 @@ tetramino_rotate:
     pusha
     push es
 
+    ; Reset ES for movs*.
     xor ax, ax
     mov es, ax
 
@@ -167,6 +171,7 @@ tetramino_rotate:
     mov cx, 4
 
     .loop:
+        ; The vertical line from ROT_TETRAMINO is (cx - 1).
         mov di, ROT_TETRAMINO - 1
         add di, cx
 
@@ -175,7 +180,7 @@ tetramino_rotate:
         .line:
             movsb
 
-            ; One vertical line to write to ROT_TETRAMINO.
+            ; For one vertical line from ROT_TETRAMINO, get to next horizontal line.
             add di, 3
 
             dec dl
@@ -189,6 +194,31 @@ tetramino_rotate:
     rep movsw
 
     pop es
+    popa
+    ret
+
+; Displays stack.
+stack_display:
+    pusha
+
+    ; Add 30 characters padding in the front.
+    mov di, 70
+    mov si, STACK
+
+    .loop:
+        ; Copy 10 characters.
+        mov cx, 10
+
+        .line:
+            movsb
+            inc di
+            loop .line
+
+        ; Handle remaining 30 characters in row, and starting 30 in next row.
+        add di, 140
+        cmp di, (25 * 160)          ; If we go beyond the last row, we're over.
+        jb .loop
+
     popa
     ret
 
