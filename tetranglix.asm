@@ -11,10 +11,10 @@ ROT_TETRAMINO   EQU BSS + 16  ; 16 bytes.
 OFFSET          EQU BSS + 32  ; 2 bytes.
 STACK           EQU BSS + 34  ; 250 bytes.
 
-; TODO: stack_display, tetramino_collision_check, main event loop, stack_join, scoring (if plausible).
+; TODO: main event loop, stack_join, scoring (if plausible).
 ;       README.md, release, ..., PROFIT!
 
-CPU 186
+CPU 386
 
 ; Entry point.
 ;     dl    -> the drive number.
@@ -101,8 +101,7 @@ tetramino_load:
             jmp .loop_end
     
         .zero:
-            xor cl, cl
-            mov [bx], cl
+            mov byte [bx], 0x20          ; ' '
     
     .loop_end:
         inc bx
@@ -122,9 +121,9 @@ tetramino_display:
     mov cl, 80
     mul cl
 
-    mov bx, ax
-    add bx, [OFFSET]
+    movzx bx, byte [OFFSET]
     add bx, 30
+    add bx, ax
 
     ; One character takes 2 bytes in video memory.
     shl bx, 1
@@ -162,6 +161,8 @@ tetramino_display:
         ret
 
 ; Rotates CUR_TETRAMINO 90 degrees clock-wise.
+; Output:
+;     CUR_TETRAMINO -> rotated tetramino.
 tetramino_rotate:
     pusha
     push es
@@ -198,6 +199,65 @@ tetramino_rotate:
 
     pop es
     popa
+    ret
+
+; Detects if CUR_TETRAMINO at OFFSET is colliding with any thing.
+; Output:
+;     Carry set if colliding.
+tetramino_collision_check:
+    pusha
+
+    clc
+
+    ; Get offset.
+    call stack_get_offset
+
+    ; Loops for 16 input characters.
+    mov cl, 0x10
+    mov si, CUR_TETRAMINO
+
+    .loop:
+        test cl, cl
+        jz .ret
+        
+        dec cl
+
+        lodsb
+        xor al, [di]
+        jnz .next
+
+        ; Colliding!
+        stc
+        jmp .ret
+
+    .next:
+        inc di
+
+        test cl, 0b11
+        jnz .loop
+
+        ; Go to next line in stack.
+        add di, 10 - 4
+        jmp .loop
+
+    .ret:
+        popa
+        ret
+
+; Gets the offset into stack (i.e., address) into di.
+; Output:
+;     di -> address into stack.
+;     Trashes ax, bx, cl.
+stack_get_offset:
+    ; Calculate first index into screen.
+    mov al, [OFFSET + 1]
+    mov cl, 10
+    mul cl
+
+    movzx bx, byte [OFFSET]
+    lea di, [STACK + bx]
+    add di, ax
+
     ret
 
 ; Displays stack.
