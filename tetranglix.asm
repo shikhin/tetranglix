@@ -22,17 +22,6 @@ CPU 386
 start:
     jmp 0x0000:.flush_CS                    ; Some BIOS' may load us at 0x0000:0x7C00, while others at 0x07C0:0x0000.
 
-    ; Generic error procedure.
-    .error:
-        ; Display al.
-        xor bx, bx
-        mov ah, 0x0E
-        int 0x10
-
-        .hlt:
-            hlt
-            jmp .hlt
-
     .flush_CS:
         ; Set up segments.
         xor bx, bx
