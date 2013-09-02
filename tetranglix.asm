@@ -9,14 +9,14 @@ CUR_TETRAMINO   EQU BSS       ; 16 bytes.
 ROT_TETRAMINO   EQU BSS + 16  ; 16 bytes.
 OFFSET          EQU BSS + 32  ; 2 bytes.
 STACK           EQU BSS + 34  ; 250 bytes.
-COUNTER         EQU BSS + 284 ; 2 bytes.
-BIOS_PIT_HANDLER EQU BSS + 286 ; 4 bytes.
 
 LEFT_SCANCODE   EQU 75
 RIGHT_SCANCODE  EQU 77
 
 UP_SCANCODE     EQU 72
 DOWN_SCANCODE   EQU 80
+
+PIT_TICS_WAIT   EQU 4
 
 ; TODO: main event loop, stack_join, scoring (if plausible).
 ;       README.md, release, ..., PROFIT!
@@ -49,17 +49,6 @@ start:
     xor ax, ax
     rep stosb
 
-    ; Save the current BIOS PIT handler's address.
-    mov si, 0x8 * 4
-    mov di, BIOS_PIT_HANDLER
-    movsd
-
-    ; Hook up to PIT, to fire pit_handler instead of the BIOS handler.
-    cli
-    mov word [si - 4], pit_handler
-    mov [si - 2], bx            ; Zero, from above.
-    sti
-
     ; Set to mode 0x03, or 80x25 text mode (ah is zero from above).
     mov al, 0x03
     int 0x10
@@ -84,8 +73,12 @@ start:
     mov si, OFFSET
 
     .event_loop:
-        cmp byte [si + (COUNTER - OFFSET)], 0
-        jne .event_loop
+        mov bx, [0x046C]
+        add bx, 3
+
+        .busy_loop:
+            cmp [0x046C], bx
+            jne .busy_loop
 
         ; If we don't need to load a new tetramino, yayy!
         test dl, dl
@@ -168,34 +161,7 @@ start:
 
             call tetramino_display
 
-            ; Wait for four ticks, per "frame". 
-            ; No science, feels good to play with this.
-            add byte [si + (COUNTER - OFFSET)], 4
             jmp .event_loop
-
-; Handles the PIT interrupt, also calling the BIOS' handler.
-; Output:
-;     Decrements COUNTER, unless 0.
-pit_handler:
-    pusha
-
-    ; If the lock was already set, return.
-    xor cx, cx
-    xchg cl, [pit_lock]
-    jcxz .ret
-
-    mov cx, [COUNTER]
-    jcxz .unlock
-    dec word [COUNTER]
-
-    ; Unlock the handler.
-    .unlock:
-        mov byte [pit_lock], 1
-
-    .ret:
-        popa
-        ; Call the BIOS handler.
-        jmp far [BIOS_PIT_HANDLER]
 
 ; Load a tetramino to CUR_TETRAMINO, from the compressed bitmap format.
 ;     bl -> tetramino index.
@@ -205,10 +171,9 @@ tetramino_load:
     ; Get the address of the tetramino (in bitmap format).
     xor bh, bh
     shl bl, 1
-    add bx, tetraminos
 
     ; Load tetramino bitmap in ax.
-    mov ax, [bx]
+    mov ax, [bx + tetraminos]
 
     ; Convert from bitmap to array.
     mov dx, 0x8000
@@ -453,10 +418,6 @@ tetraminos:
     dw 0b0000001101100000   ; S
     dw 0b0000111001000000   ; T
     dw 0b0000011000110000   ; Z
-
-; Lock over PIT handling code -- not re-entrant.
-pit_lock: 
-    db 1
 
 ; Padding.
 times 510 - ($ - $$)            db 0
