@@ -32,6 +32,17 @@ start:
     
         mov ds, bx
         mov es, bx
+        
+    ; Hook up to PIT
+    mov ax, 0
+    mov es, ax
+    mov ax, [es:0x8*4]
+    mov [old_pit], ax
+    mov ax, [es:0x8*4+2]
+    mov [old_pit+2],ax
+    mov ax, cs
+    mov [es:0x8*4], word pit_handler
+    mov [es:0x8*4+2], ax
 
     ; Clear direction flag.
     cld
@@ -61,8 +72,29 @@ start:
     mov cx, 80*25
     mov ax, 0x0F00
     rep stosw
-
+    
     jmp $
+
+pit_handler:
+	pusha
+	xor cx, cx
+	xchg cl, [pit_lock]
+	jcxz .end
+	
+	mov cx, tic_counter
+	jcxz .unlock
+	dec word [tic_counter]
+	
+	.unlock:
+		mov [pit_lock], byte 1
+	
+	.end:
+		popa
+		mov ax, [old_pit+2]
+		push ax
+		mov ax, [old_pit]
+		push ax
+		retf
 
 ; Load a tetramino to CUR_TETRAMINO, from the compressed bitmap format.
 ;     al -> tetramino index.
@@ -293,6 +325,11 @@ tetraminos:
     dw 0b0000001101100000   ; S
     dw 0b0000111001000000   ; T
     dw 0b0000011000110000   ; Z
+
+; used by PIT handler
+tic_counter: dw 0
+pit_lock: db 1
+old_pit: dd 0
 
 ; Padding.
 times 510 - ($ - $$)            db 0
