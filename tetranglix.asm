@@ -3,13 +3,14 @@ BITS 16
 ORG 0x7C00
 
 BSS             EQU 0x504     ; The byte at 0x500 is also used, so align on next dword bound.
-BSS_SIZE        EQU 284       ; 16 for CUR_TETRAMINO, 16 for ROT_TETRAMINO, 2 for (x, y) into field.
-                              ; 250 for stack.
+BSS_SIZE        EQU 290
 
 CUR_TETRAMINO   EQU BSS       ; 16 bytes.
 ROT_TETRAMINO   EQU BSS + 16  ; 16 bytes.
 OFFSET          EQU BSS + 32  ; 2 bytes.
 STACK           EQU BSS + 34  ; 250 bytes.
+COUNTER         EQU BSS + 284 ; 2 bytes.
+BIOS_PIT_HANDLER EQU BSS + 286 ; 4 bytes.
 
 ; TODO: main event loop, stack_join, scoring (if plausible).
 ;       README.md, release, ..., PROFIT!
@@ -32,35 +33,32 @@ start:
     
         mov ds, bx
         mov es, bx
-        
-    ; Hook up to PIT
-    mov ax, 0
-    mov es, ax
-    mov ax, [es:0x8*4]
-    mov [old_pit], ax
-    mov ax, [es:0x8*4+2]
-    mov [old_pit+2],ax
-    mov ax, cs
-    mov [es:0x8*4], word pit_handler
-    mov [es:0x8*4+2], ax
 
     ; Clear direction flag.
     cld
-    
+  
     ; Clear BSS
-    mov ax, BSS
-    mov di, ax
+    mov di, BSS
     mov cx, BSS_SIZE
     xor ax, ax
     rep stosb
+
+    ; Save the current BIOS PIT handler's address.
+    mov si, 0x8 * 4
+    mov di, BIOS_PIT_HANDLER
+    movsd
+
+    ; Hook up to PIT, to fire pit_handler instead of the BIOS handler.
+    mov word [si - 4], pit_handler
+    mov [si - 2], bx            ; Zero, from above.
     
-    ; Set to mode 0x03, or 80x25 text mode.
-    xor ah, ah
+    ; Set to mode 0x03, or 80x25 text mode (ah is zero from above).
     mov al, 0x03
     int 0x10
 
     ; Hide the hardware cursor.               
     mov ch, 0x26
+    mov al, 0x03                ; Some BIOS crash without this.
     inc ah
     int 0x10
 
@@ -75,25 +73,31 @@ start:
     
     jmp $
 
+; Handles the PIT interrupt, also calling the BIOS' handler.
+; Output:
+;     Decrements COUNTER, unless 0.
 pit_handler:
 	pusha
+
+    ; If the lock was already set, return.
 	xor cx, cx
 	xchg cl, [pit_lock]
-	jcxz .end
+	jcxz .ret
 	
-	mov cx, tic_counter
+	mov cx, [COUNTER]
 	jcxz .unlock
-	dec word [tic_counter]
+	dec word [COUNTER]
 	
+    ; Unlock the handler.
 	.unlock:
-		mov [pit_lock], byte 1
+		mov byte [pit_lock], 1
 	
-	.end:
+	.ret:
 		popa
-		mov ax, [old_pit+2]
-		push ax
-		mov ax, [old_pit]
-		push ax
+
+        ; Call the BIOS handler.
+		push word [BIOS_PIT_HANDLER + 2]
+		push word [BIOS_PIT_HANDLER]
 		retf
 
 ; Load a tetramino to CUR_TETRAMINO, from the compressed bitmap format.
@@ -326,10 +330,9 @@ tetraminos:
     dw 0b0000111001000000   ; T
     dw 0b0000011000110000   ; Z
 
-; used by PIT handler
-tic_counter: dw 0
-pit_lock: db 1
-old_pit: dd 0
+; Lock over PIT handling code -- not re-entrant.
+pit_lock: 
+    db 1
 
 ; Padding.
 times 510 - ($ - $$)            db 0
