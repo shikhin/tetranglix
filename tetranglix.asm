@@ -21,7 +21,7 @@ PIT_TICS_WAIT   EQU 4
 ; TODO: main event loop, stack_join, scoring (if plausible).
 ;       README.md, release, ..., PROFIT!
 
-CPU 386
+CPU 686
 
 ; Entry point.
 ;     dl    -> the drive number.
@@ -72,6 +72,7 @@ start:
     xor dl, dl
     mov si, OFFSET
 
+    sti
     .event_loop:
         mov bx, [0x046C]
         add bx, 3
@@ -173,27 +174,24 @@ tetramino_load:
     shl bl, 1
 
     ; Load tetramino bitmap in ax.
-    mov ax, [bx + tetraminos]
+    mov bx, [bx + tetraminos]
 
     ; Convert from bitmap to array.
-    mov dx, 0x8000
-    mov bx, CUR_TETRAMINO
+    mov di, CUR_TETRAMINO
+    mov si, 0xDB
+    mov cx, 0x10
 
     .loop:
-        test ax, dx
-        jz .zero
-    
-            mov byte [bx], 0xDB     ; Full block.
-            jmp .next_iter
-    
-        .zero:
-            mov byte [bx], 0x00     ; ' '
-    
-        .next_iter:
-            inc bx
+        xor al, al
 
-            shr dx, 1
-            jnz .loop
+        shl bx, 1
+        
+        ; If the bit we just shifted off was set, store 0xDB.
+        cmovc ax, si
+        mov [di], al
+        inc di
+
+        loop .loop
     
     popa
     ret
@@ -201,24 +199,26 @@ tetramino_load:
 ; Displays CUR_TETRAMINO at current OFFSET.
 tetramino_display:
     pusha
-
+ 
     ; Calculate first index into screen.
     mov al, [OFFSET + 1]
     mov cl, 80
     mul cl
-
-    movzx bx, byte [OFFSET]
-    shl bx, 1
-
-    add bx, 30
-    add bx, ax
-
+ 
+    movzx di, byte [OFFSET]
+    shl di, 1
+ 
+    add di, 30
+    add di, ax
+ 
     ; One character takes 2 bytes in video memory.
-    shl bx, 1
-
+    shl di, 1
+ 
     ; Loops for 16 input characters.
     mov cl, 0x10
     mov si, CUR_TETRAMINO
+ 
+    mov ah, 0x0F
 
     .loop:
         test cl, cl
@@ -226,26 +226,22 @@ tetramino_display:
         
         dec cl
 
-        mov dl, [si]
-        test dl, dl
-        je .next_iter
-
+        lodsb
+        test al, al
+ 
         ; Output two characters for "squarish" output.
-        mov [es:bx], dl
-        mov [es:bx + 2], dl
+        cmovz ax, [es:di]
+        stosw
+        stosw
 
-        .next_iter:
-            inc si
-            add bx, 4
-
-            test cl, 0b11
-            jnz .loop
-
-            ; Since each tetramino input is 4x4, we must go to next line
-            ; at every multiple of 4.
-            ; Since we output 2 characters for one input char, cover offset of 8.
-            add bx, (80 - 8) * 2
-            jmp .loop
+        test cl, 0b11
+        jnz .loop
+ 
+        ; Since each tetramino input is 4x4, we must go to next line
+        ; at every multiple of 4.
+        ; Since we output 2 characters for one input char, cover offset of 8.
+        add di, (80 - 8) * 2
+        jmp .loop
 
     .ret:
         popa
@@ -258,9 +254,9 @@ tetramino_rotate:
     pusha
     push es
 
-    ; Reset ES for movs*.
-    xor ax, ax
-    mov es, ax
+    ; Reset ES.
+    push ds 
+    pop es
 
     mov si, CUR_TETRAMINO
     mov cx, 4
@@ -286,7 +282,7 @@ tetramino_rotate:
     mov si, ROT_TETRAMINO
     mov di, CUR_TETRAMINO
     mov cl, 4*4/2       ; CH would be zero, from above.
-    rep movsw
+    rep ds movsw
 
     pop es
     popa
@@ -384,8 +380,8 @@ stack_display:
 
     .loop:
         ; Frame characters: one character before 30, one character after 50.
-        mov byte [es:di - 2], 0xBA
-        mov byte [es:di + 40], 0xBA
+        mov dword [es:di - 4], 0xF0BAF0BA
+        mov dword [es:di + 40], 0xF0BAF0BA
 
         ; Copy 20 characters.
         mov cx, 10
