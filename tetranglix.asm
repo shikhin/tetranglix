@@ -99,7 +99,8 @@ start:
         ; Loaded.
         inc dl
 
-        xor bl, bl
+        ;xor bl, bl
+        mov bl, 5
         ; REPLACE BY RAND.
         call tetramino_load
 
@@ -163,6 +164,7 @@ start:
             call tetramino_collision_check
             jnc .next_iter
 
+            call stack_join
             ; If we can't, we need a new tetramino.
             dec byte [si + 1]
             xor dl, dl
@@ -406,6 +408,48 @@ stack_display:
 
     popa
     ret
+
+; Joins the current tetramino to the stack
+stack_join:
+    pusha
+    
+    ; Get the "zero offset" to stack
+    mov si, OFFSET
+    xor ax, ax
+    xor bx, bx
+    lodsb
+    mov bl, al
+    lodsb
+    dec al
+    mov dx, 0x10
+    mul dx
+    add bx, ax
+    lea di, [STACK+bx]
+    
+    xor bx, bx
+    
+    .rows:
+        lea si, [CUR_TETRAMINO+bx]
+        
+        mov cx, 4
+        .loop:
+            lodsb
+            test al, al
+            jz .end
+            
+            mov [di], al
+            
+            .end:
+                inc di
+                loop .loop
+        add bx, 4
+        add di, 12
+        cmp bx, 0x10
+        jne .rows
+    
+    popa
+    ret
+        
 
 ; All tetraminos in bitmap format.
 tetraminos:
