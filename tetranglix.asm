@@ -100,7 +100,7 @@ start:
         inc dl
 
         xor bl, bl
-        inc bl
+        ; REPLACE BY RAND.
         call tetramino_load
 
         mov word [si], 0x0006
@@ -161,7 +161,6 @@ start:
             ; Check if we can go below one byte, successfully.
             inc byte [si + 1]
             call tetramino_collision_check
-
             jnc .next_iter
 
             ; If we can't, we need a new tetramino.
@@ -324,9 +323,15 @@ tetramino_collision_check:
 
         lodsb
 
+        cmp al, 0xDB
+        jne .next_iter
+
+        cmp di, STACK + 400
+        jae .error
+
         .check_collision:
             cmp al, [di]
-            jnz .next_iter
+            jne .next_iter
 
         ; Colliding!
         stc
@@ -363,7 +368,7 @@ stack_get_offset:
     ; Calculate first index into screen.
     xor ah, ah
     mov al, [si + 1]
-    shl al, 4
+    shl ax, 4
 
     movzx bx, byte [si]
     lea di, [STACK + bx]
