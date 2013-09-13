@@ -3,12 +3,12 @@ BITS 16
 ORG 0x7C00
 
 BSS             EQU 0x504     ; The byte at 0x500 is also used, so align on next dword bound.
-BSS_SIZE        EQU 290
+BSS_SIZE        EQU 438
 
 CUR_TETRAMINO   EQU BSS       ; 16 bytes.
 ROT_TETRAMINO   EQU BSS + 16  ; 16 bytes.
 OFFSET          EQU BSS + 32  ; 2 bytes.
-STACK           EQU BSS + 34  ; 250 bytes.
+STACK           EQU BSS + 38  ; 4 bytes reserved in beginning, 400 bytes.
 
 LEFT_SCANCODE   EQU 75
 RIGHT_SCANCODE  EQU 77
@@ -27,9 +27,9 @@ CPU 686
 ;     dl    -> the drive number.
 ;     cs:ip -> linear address 0x7C00.
 start:
-    jmp 0x0000:.flush_CS                    ; Some BIOS' may load us at 0x0000:0x7C00, while others at 0x07C0:0x0000.
+    jmp 0x0000:.CS_flush                    ; Some BIOS' may load us at 0x0000:0x7C00, while others at 0x07C0:0x0000.
 
-    .flush_CS:
+    .CS_flush:
         ; Set up segments.
         xor bx, bx
 
@@ -58,6 +58,17 @@ start:
     mov al, 0x03                ; Some BIOS crash without this.
     inc ah
     int 0x10
+
+    mov di, STACK
+    mov eax, 0xDBDBDBDB
+
+    .borders_init:
+        mov dword [di - 3], eax
+        mov word [di + 1], ax
+
+        add di, 16
+        cmp di, STACK + 400
+        jbe .borders_init
 
     mov ax, 0xB800
     mov es, ax
@@ -89,9 +100,10 @@ start:
         inc dl
 
         xor bl, bl
+        inc bl
         call tetramino_load
 
-        mov word [si], 0x0003
+        mov word [si], 0x0006
         jmp .next_iter
 
         ; Check for input.
@@ -208,7 +220,7 @@ tetramino_display:
     movzx di, byte [OFFSET]
     shl di, 1
  
-    add di, 30
+    add di, 24
     add di, ax
  
     ; One character takes 2 bytes in video memory.
@@ -299,8 +311,6 @@ tetramino_collision_check:
 
     ; Get offset.
     call stack_get_offset
-    mov bx, ax
-    add bx, STACK + 10
 
     ; Loops for 16 input characters.
     mov cl, 0x10
@@ -313,14 +323,6 @@ tetramino_collision_check:
         dec cl
 
         lodsb
-        cmp al, 0xDB
-        jne .next_iter
-
-        cmp di, bx
-        jae .error
-
-        cmp di, STACK + 250
-        jae .error
 
         .check_collision:
             cmp al, [di]
@@ -337,8 +339,7 @@ tetramino_collision_check:
             jnz .loop
 
             ; Go to next line in stack.
-            add di, 10 - 4
-            add bx, 10
+            add di, 16 - 4
 
             jmp .loop
 
@@ -354,15 +355,15 @@ tetramino_collision_check:
 ;     si -> points at OFFSET.
 ;     di -> address into stack.
 ;     ax -> offset just according to the y-coordinate.
-;     Trashes bx, cl.
+;     Trashes bx.
 stack_get_offset:
     ; Don't allow overflow.
     mov si, OFFSET
 
     ; Calculate first index into screen.
+    xor ah, ah
     mov al, [si + 1]
-    mov cl, 10
-    mul cl
+    shl al, 4
 
     movzx bx, byte [si]
     lea di, [STACK + bx]
@@ -374,17 +375,13 @@ stack_get_offset:
 stack_display:
     pusha
 
-    ; Add 30 characters padding in the front.
-    mov di, 60
+    ; Add 24 characters padding in the front.
+    mov di, 48
     mov si, STACK
 
     .loop:
-        ; Frame characters: one character before 30, one character after 50.
-        mov dword [es:di - 4], 0xF0BAF0BA
-        mov dword [es:di + 40], 0xF0BAF0BA
-
-        ; Copy 20 characters.
-        mov cx, 10
+        ; Copy 32 characters.
+        mov cx, 16
 
         .line:
             lodsb
@@ -397,8 +394,8 @@ stack_display:
 
             loop .line
 
-        ; Handle remaining 30 characters in row, and starting 30 in next row.
-        add di, 120
+        ; Handle remaining 24 characters in row, and starting 24 in next row.
+        add di, 96
         cmp di, (25 * 160)          ; If we go beyond the last row, we're over.
         jb .loop
 
