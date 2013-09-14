@@ -80,6 +80,7 @@ start:
     ; Cleared dx implies "load new tetramino".
     xor dl, dl
     mov si, OFFSET
+    mov di, tetramino_collision_check               ; Save some bytes.
 
     sti
     .event_loop:
@@ -97,8 +98,7 @@ start:
         ; Loaded.
         inc dl
 
-        ;xor bl, bl
-        mov bl, 5
+        xor bl, bl
         ; REPLACE BY RAND.
         call tetramino_load
 
@@ -127,7 +127,7 @@ start:
             jne .right
 
             dec byte [si]
-            call tetramino_collision_check
+            call di
             jc .restore
 
         ; Go right.
@@ -136,7 +136,7 @@ start:
             jne .rotate
 
             inc byte [si]
-            call tetramino_collision_check
+            call di
             jc .restore
 
         ; Rotate it.
@@ -145,13 +145,15 @@ start:
             jne .vertical_increment
 
             call tetramino_rotate
-            call tetramino_collision_check
+            call di
             jnc .vertical_increment
 
             ; To restore, just rotate 3 more times.
-            call tetramino_rotate
-            call tetramino_rotate
-            call tetramino_rotate           
+            mov cx, 3
+
+            .restore_rotation:
+                call tetramino_rotate
+                loop .restore_rotation       
 
         .restore:
             mov [si], bx
@@ -159,7 +161,7 @@ start:
         .vertical_increment:
             ; Check if we can go below one byte, successfully.
             inc byte [si + 1]
-            call tetramino_collision_check
+            call di
             jnc .next_iter
 
             ; If we can't, we need a new tetramino.
@@ -421,11 +423,55 @@ stack_display:
 ; Joins the current tetramino to the stack, and any complete lines together.
 stack_join:
     pusha
-    
+    push es
+
+    push ds
+    pop es
+
     mov dx, .merge
     call tetramino_process
 
+    xor cx, cx
+    mov si, STACK
+
+    .loop_lines:
+        mov dl, 15
+        xor bl, bl
+
+        .line:
+            lodsb
+            test al, al
+            jnz .next_iter
+
+            ; Found a 'blank', this isn't it.
+            inc bl
+
+            .next_iter:
+                dec dl
+                jnz .line
+
+        test bl, bl
+        jnz .next_line
+
+        std
+        pusha
+
+        mov di, si
+        sub si, 16
+        rep movsb
+
+        popa
+        cld
+
+        .next_line:
+            add si, 16
+            add cx, 16
+
+            cmp cx, 400
+            jb .loop_lines
+
     .ret:
+        pop es
         popa
         ret
 
@@ -436,12 +482,12 @@ stack_join:
 ; All tetraminos in bitmap format.
 tetraminos:
     dw 0b0000111100000000   ; I
-    dw 0b0000111000100000   ; J
-    dw 0b0000001011100000   ; L
-    dw 0b0000011001100000   ; O
-    dw 0b0000001101100000   ; S
-    dw 0b0000111001000000   ; T
-    dw 0b0000011000110000   ; Z
+    ;dw 0b0000111000100000   ; J
+    ;dw 0b0000001011100000   ; L
+    ;dw 0b0000011001100000   ; O
+    ;dw 0b0000001101100000   ; S
+    ;dw 0b0000111001000000   ; T
+    ;dw 0b0000011000110000   ; Z
 
 ; Padding.
 times 510 - ($ - $$)            db 0
