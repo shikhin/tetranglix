@@ -16,8 +16,6 @@ RIGHT_SCANCODE  EQU 77
 UP_SCANCODE     EQU 72
 DOWN_SCANCODE   EQU 80
 
-PIT_TICS_WAIT   EQU 4
-
 ; TODO: main event loop, stack_join, scoring (if plausible).
 ;       README.md, release, ..., PROFIT!
 
@@ -86,7 +84,7 @@ start:
     sti
     .event_loop:
         mov bx, [0x046C]
-        add bx, 3
+        add bx, 3           ; Wait for 3 PIT ticks.
 
         .busy_loop:
             cmp [0x046C], bx
@@ -151,9 +149,9 @@ start:
             jnc .vertical_increment
 
             ; To restore, just rotate 3 more times.
-            call tetramino_collision_check
-            call tetramino_collision_check
-            call tetramino_collision_check           
+            call tetramino_rotate
+            call tetramino_rotate
+            call tetramino_rotate           
 
         .restore:
             mov [si], bx
