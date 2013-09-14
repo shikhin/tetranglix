@@ -59,17 +59,6 @@ start:
     inc ah
     int 0x10
 
-    mov di, STACK
-    mov eax, 0xDBDBDBDB
-
-    .borders_init:
-        mov dword [di - 3], eax
-        mov word [di + 1], ax
-
-        add di, 16
-        cmp di, STACK + 400
-        jbe .borders_init
-
     mov ax, 0xB800
     mov es, ax
 
@@ -78,6 +67,17 @@ start:
     mov cx, 80*25
     mov ax, 0x0F00
     rep stosw
+
+    mov si, STACK
+    mov eax, 0xDBDBDBDB
+
+    .borders_init:
+        mov dword [si - 3], eax
+        mov word [si + 1], ax
+
+        add si, 16
+        cmp si, STACK + 400
+        jbe .borders_init
 
     ; Cleared dx implies "load new tetramino".
     xor dl, dl
@@ -303,21 +303,13 @@ tetramino_rotate:
     popa
     ret
 
-; Detects if CUR_TETRAMINO at OFFSET is colliding with any thing.
-; Output:
-;     Carry set if colliding.
-tetramino_collision_check:
+; Processes the current tetramino, calling dx per "tetramino pixel".
+;     dx -> where to call to; al contains tetramino pixel, di the address into stack.
+tetramino_process:
     pusha
-
-    ; Clear carry.
-    clc
-
-    ; Get offset.
+    
     call stack_get_offset
-
-    ; Loops for 16 input characters.
     mov cl, 0x10
-    mov si, CUR_TETRAMINO
 
     .loop:
         test cl, cl
@@ -327,19 +319,8 @@ tetramino_collision_check:
 
         lodsb
 
-        cmp al, 0xDB
-        jne .next_iter
-
-        cmp di, STACK + 400
-        jae .error
-
-        .check_collision:
-            cmp al, [di]
-            jne .next_iter
-
-        ; Colliding!
-        stc
-        jmp .ret
+        ; Call wherever the caller wants us to go.
+        call dx
 
         .next_iter:
             inc di
@@ -351,30 +332,58 @@ tetramino_collision_check:
             add di, 16 - 4
 
             jmp .loop
+    
+    .ret:
+        popa
+        ret
 
-    .error:
-        stc
+; Detects if CUR_TETRAMINO at OFFSET is colliding with any thing.
+; Output:
+;     Carry set if colliding.
+tetramino_collision_check:
+    pusha
+
+    ; Clear carry.
+    clc
+
+    mov dx, .check_collision
+    call tetramino_process
 
     .ret:
         popa
         ret
 
+    .check_collision:
+        cmp al, 0xDB
+        jne .next_iter
+
+        cmp di, STACK + 400
+        jae .colliding
+
+        cmp al, [di]
+        jne .next_iter
+
+        ; Colliding!
+        .colliding:
+            add sp, 18
+
+            stc
+        .next_iter:
+            ret
+
 ; Gets the offset into stack (i.e., address) into di.
 ; Output:
-;     si -> points at OFFSET.
+;     si -> points at CUR_TETRAMINO.
 ;     di -> address into stack.
-;     ax -> offset just according to the y-coordinate.
-;     Trashes bx.
+;     Trashes ax & bx.
 stack_get_offset:
-    ; Don't allow overflow.
-    mov si, OFFSET
+    mov si, CUR_TETRAMINO
 
     ; Calculate first index into screen.
-    xor ah, ah
-    mov al, [si + 1]
+    movzx ax, byte [si + (OFFSET - CUR_TETRAMINO) + 1]
     shl ax, 4
 
-    movzx bx, byte [si]
+    movzx bx, byte [si + (OFFSET - CUR_TETRAMINO)]
     lea di, [STACK + bx]
     add di, ax
 
@@ -415,34 +424,16 @@ stack_display:
 stack_join:
     pusha
     
-    call stack_get_offset
-    mov si, CUR_TETRAMINO
-    mov cl, 0x10
+    mov dx, .merge
+    call tetramino_process
 
-    .loop:
-        test cl, cl
-        jz .ret
-        
-        dec cl
-
-        lodsb
-        or [di], al
-
-        .next_iter:
-            inc di
-
-            test cx, 0b11
-            jnz .loop
-
-            ; Go to next line in stack.
-            add di, 16 - 4
-
-            jmp .loop
-    
     .ret:
         popa
         ret
-        
+
+    .merge:
+        or [di], al
+        ret
 
 ; All tetraminos in bitmap format.
 tetraminos:
