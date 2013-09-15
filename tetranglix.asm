@@ -59,12 +59,15 @@ start:
 
     mov ax, 0xB800
     mov es, ax
+    ;mov fs, ax
 
     ; White spaces on black background.
     xor di, di
     mov cx, 80*25
     mov ax, 0x0F00
     rep stosw
+
+    ;mov byte [es:0], '0'
 
     .borders:
         mov si, STACK
@@ -98,18 +101,24 @@ start:
 
         ; Loaded.
         inc dl
-
+ 
         ; Load a tetramino to CUR_TETRAMINO, from the compressed bitmap format.
         pusha
 
-        ; Weird, this fails with QEMU. INVESTIGATE.
-        ;rdtsc
-        ;add ax, [0x046C]
-        ;mov cx, 7
-        ;div cx
-        ;mov bx, dx
+        rdtsc
+        xor ax, dx
+        
+        ; For some reason, QEMU fails when DX isn't clear and I 'div cx', 
+        ; so let us let it remain that way.
+        xor dx, dx
 
-        xor bx, bx
+        ; Yayy, more random.
+        add ax, [0x046C]
+
+        ; Only 7 tetraminos.
+        mov cx, 7
+        div cx
+        mov bx, dx
 
         ; Get the address of the tetramino (in bitmap format).
         shl bl, 1
@@ -178,16 +187,57 @@ start:
             cmp ah, UP_SCANCODE
             jne .vertical_increment
 
-            call tetramino_rotate
+            xor cx, cx
+            inc cl
+
+            .rotate_loop:
+                ; Rotates CUR_TETRAMINO 90 degrees clock-wise.
+                ; Output:
+                ;     CUR_TETRAMINO -> rotated tetramino.
+                pusha
+                push es
+
+                ; Reset ES.
+                push ds 
+                pop es
+
+                mov si, CUR_TETRAMINO
+                mov cx, 4
+
+                .loop:
+                    ; The vertical line from ROT_TETRAMINO is (cx - 1).
+                    mov di, ROT_TETRAMINO - 1
+                    add di, cx
+
+                    mov dl, 4
+
+                    .tetramino_line:
+                        movsb
+
+                        ; For one vertical line from ROT_TETRAMINO, get to next horizontal line.
+                        add di, 3
+
+                        dec dl
+                        jnz .tetramino_line
+
+                    loop .loop
+
+                mov si, ROT_TETRAMINO
+                mov di, CUR_TETRAMINO
+                mov cl, 4*4/2       ; CH would be zero, from above.
+                rep movsw
+
+                pop es
+                popa
+
+                loop .rotate_loop
+
             call di
             jnc .vertical_increment
 
             ; To restore, just rotate 3 more times.
             mov cx, 3
-
-            .restore_rotation:
-                call tetramino_rotate
-                loop .restore_rotation       
+            jmp .rotate_loop
 
         .restore:
             mov [si], bx
@@ -237,6 +287,8 @@ start:
                 mov di, si
                 sub si, 16
                 rep movsb
+
+                ;inc byte [fs:0]
 
                 popa
                 cld
@@ -336,47 +388,6 @@ start:
 ; Used by the stack joining part.
 merge:
     or [di], al
-    ret
-
-; Rotates CUR_TETRAMINO 90 degrees clock-wise.
-; Output:
-;     CUR_TETRAMINO -> rotated tetramino.
-tetramino_rotate:
-    pusha
-    push es
-
-    ; Reset ES.
-    push ds 
-    pop es
-
-    mov si, CUR_TETRAMINO
-    mov cx, 4
-
-    .loop:
-        ; The vertical line from ROT_TETRAMINO is (cx - 1).
-        mov di, ROT_TETRAMINO - 1
-        add di, cx
-
-        mov dl, 4
-
-        .line:
-            movsb
-
-            ; For one vertical line from ROT_TETRAMINO, get to next horizontal line.
-            add di, 3
-
-            dec dl
-            jnz .line
-
-        loop .loop
-
-    mov si, ROT_TETRAMINO
-    mov di, CUR_TETRAMINO
-    mov cl, 4*4/2       ; CH would be zero, from above.
-    rep movsw
-
-    pop es
-    popa
     ret
 
 ; Processes the current tetramino, calling dx per "tetramino pixel".
