@@ -16,7 +16,7 @@ RIGHT_SCANCODE  EQU 77
 UP_SCANCODE     EQU 72
 DOWN_SCANCODE   EQU 80
 
-; TODO: main event loop, stack_join, scoring (if plausible).
+; TODO: scoring (if plausible).
 ;       README.md, release, ..., PROFIT!
 
 CPU 686
@@ -59,15 +59,12 @@ start:
 
     mov ax, 0xB800
     mov es, ax
-    ;mov fs, ax
 
     ; White spaces on black background.
     xor di, di
     mov cx, 80*25
     mov ax, 0x0F00
     rep stosw
-
-    ;mov byte [es:0], '0'
 
     .borders:
         mov si, STACK
@@ -287,8 +284,6 @@ start:
                 mov di, si
                 sub si, 16
                 rep movsb
-
-                ;inc byte [fs:0]
 
                 popa
                 cld
