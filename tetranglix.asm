@@ -99,9 +99,42 @@ start:
         ; Loaded.
         inc dl
 
-        xor bl, bl
-        ; REPLACE BY RAND.
-        call tetramino_load
+        ; Load a tetramino to CUR_TETRAMINO, from the compressed bitmap format.
+        pusha
+
+        ; Weird, this fails with QEMU. INVESTIGATE.
+        ;rdtsc
+        ;add ax, [0x046C]
+        ;mov cx, 7
+        ;div cx
+        ;mov bx, dx
+
+        xor bx, bx
+
+        ; Get the address of the tetramino (in bitmap format).
+        shl bl, 1
+
+        ; Load tetramino bitmap in ax.
+        mov bx, [bx + tetraminos]
+
+        ; Convert from bitmap to array.
+        mov di, CUR_TETRAMINO
+        mov si, 0xDB
+        mov cx, 0x10
+
+        .loop_bitmap:
+            xor al, al
+
+            shl bx, 1
+        
+            ; If the bit we just shifted off was set, store 0xDB.
+            cmovc ax, si
+            mov [di], al
+            inc di
+
+            loop .loop_bitmap
+    
+        popa
 
         mov word [si], 0x0006
         jmp .next_iter
@@ -169,100 +202,141 @@ start:
             dec byte [si + 1]
             xor dl, dl
 
-            ; Join the tetramino, and join any complete lines.
-            call stack_join
+            ; Joins the current tetramino to the stack, and any complete lines together.
+            ;     si -> OFFSET.
+            pusha
+            push es
+
+            push ds
+            pop es
+
+            mov dx, merge
+            call tetramino_process
+
+            xor cx, cx
+            mov si, STACK
+
+            .loop_lines:
+                mov dl, 16
+                xor bl, bl
+
+                .line:
+                    lodsb
+                    test al, al
+                    cmovz bx, dx        ; If it was a blank, set bl to non-zero value to indicate failure.
+
+                    dec dl
+                    jnz .line
+
+                test bl, bl
+                jnz .next_line
+
+                std
+                pusha
+
+                mov di, si
+                sub si, 16
+                rep movsb
+
+                popa
+                cld
+
+               .next_line:
+                   add cx, 16
+                   cmp cx, 400
+                   jb .loop_lines
+
+            pop es
+            popa
+
             jmp .borders
 
         .next_iter:             
             ; Display the stack.
-            call stack_display
-            call tetramino_display
+            pusha
+
+            ; Add 24 characters padding in the front.
+            mov di, 48
+            mov si, STACK
+
+            .loop_stack_lines:
+                ; Copy 32 characters.
+                mov cx, 16
+
+                .stack_line:
+                    lodsb
+
+                    ; Store one character as two -- to make stack "squarish" on 80x25 display.
+                    stosb
+                    inc di
+                    stosb
+                    inc di
+
+                    loop .stack_line
+
+                ; Handle remaining 24 characters in row, and starting 24 in next row.
+                add di, 96
+                cmp di, (25 * 160)          ; If we go beyond the last row, we're over.
+                jb .loop_stack_lines
+
+            popa
+
+            ; Displays CUR_TETRAMINO at current OFFSET.
+            ;     si -> OFFSET.
+            pusha
+ 
+            ; Calculate first index into screen.
+            mov al, [si + 1]
+            mov cl, 80
+            mul cl
+ 
+            movzx di, byte [si]
+            shl di, 1
+ 
+            add di, 24
+            add di, ax
+ 
+            ; One character takes 2 bytes in video memory.
+            shl di, 1
+ 
+            ; Loops for 16 input characters.
+            mov cl, 0x10
+            mov si, CUR_TETRAMINO
+ 
+            mov ah, 0x0F
+
+            .loop_tetramino:
+                test cl, cl
+                jz .cont
+        
+                dec cl
+
+                lodsb
+                test al, al
+ 
+                ; Output two characters for "squarish" output.
+                cmovz ax, [es:di]
+                stosw
+                stosw
+
+                test cl, 0b11
+                jnz .loop_tetramino
+ 
+                ; Since each tetramino input is 4x4, we must go to next line
+                ; at every multiple of 4.
+                ; Since we output 2 characters for one input char, cover offset of 8.
+                add di, (80 - 8) * 2
+                jmp .loop_tetramino
+
+            .cont:
+                popa
 
             jmp .event_loop
 
-; Load a tetramino to CUR_TETRAMINO, from the compressed bitmap format.
-;     bl -> tetramino index.
-tetramino_load:
-    pusha
-
-    ; Get the address of the tetramino (in bitmap format).
-    xor bh, bh
-    shl bl, 1
-
-    ; Load tetramino bitmap in ax.
-    mov bx, [bx + tetraminos]
-
-    ; Convert from bitmap to array.
-    mov di, CUR_TETRAMINO
-    mov si, 0xDB
-    mov cx, 0x10
-
-    .loop:
-        xor al, al
-
-        shl bx, 1
-        
-        ; If the bit we just shifted off was set, store 0xDB.
-        cmovc ax, si
-        mov [di], al
-        inc di
-
-        loop .loop
-    
-    popa
+; Used by the stack joining part.
+merge:
+    or [di], al
     ret
-
-; Displays CUR_TETRAMINO at current OFFSET.
-;     si -> OFFSET.
-tetramino_display:
-    pusha
- 
-    ; Calculate first index into screen.
-    mov al, [si + 1]
-    mov cl, 80
-    mul cl
- 
-    movzx di, byte [si]
-    shl di, 1
- 
-    add di, 24
-    add di, ax
- 
-    ; One character takes 2 bytes in video memory.
-    shl di, 1
- 
-    ; Loops for 16 input characters.
-    mov cl, 0x10
-    mov si, CUR_TETRAMINO
- 
-    mov ah, 0x0F
-
-    .loop:
-        test cl, cl
-        jz .ret
-        
-        dec cl
-
-        lodsb
-        test al, al
- 
-        ; Output two characters for "squarish" output.
-        cmovz ax, [es:di]
-        stosw
-        stosw
-
-        test cl, 0b11
-        jnz .loop
- 
-        ; Since each tetramino input is 4x4, we must go to next line
-        ; at every multiple of 4.
-        ; Since we output 2 characters for one input char, cover offset of 8.
-        add di, (80 - 8) * 2
-        jmp .loop
-
-    .ret:
-        popa
-        ret
 
 ; Rotates CUR_TETRAMINO 90 degrees clock-wise.
 ; Output:
@@ -340,6 +414,7 @@ tetramino_process:
         ret
 
 ; Detects if CUR_TETRAMINO at OFFSET is colliding with any thing.
+;     si -> OFFSET.
 ; Output:
 ;     Carry set if colliding.
 tetramino_collision_check:
@@ -374,107 +449,23 @@ tetramino_collision_check:
             ret
 
 ; Gets the offset into stack (i.e., address) into di.
+;    si  -> points at OFFSET.
 ; Output:
 ;     si -> points at CUR_TETRAMINO.
 ;     di -> address into stack.
 ;     Trashes ax & bx.
 stack_get_offset:
-    mov si, CUR_TETRAMINO
-
     ; Calculate first index into screen.
-    movzx ax, byte [si + (OFFSET - CUR_TETRAMINO) + 1]
+    movzx ax, byte [si + 1]
     shl ax, 4
 
-    movzx bx, byte [si + (OFFSET - CUR_TETRAMINO)]
-    lea di, [STACK + bx]
+    movzx bx, byte [si]
+    lea di, [si + (STACK - OFFSET) + bx]
     add di, ax
 
+    mov si, CUR_TETRAMINO
+
     ret
-
-; Displays stack.
-stack_display:
-    pusha
-
-    ; Add 24 characters padding in the front.
-    mov di, 48
-    mov si, STACK
-
-    .loop:
-        ; Copy 32 characters.
-        mov cx, 16
-
-        .line:
-            lodsb
-
-            ; Store one character as two -- to make stack "squarish" on 80x25 display.
-            stosb
-            inc di
-            stosb
-            inc di
-
-            loop .line
-
-        ; Handle remaining 24 characters in row, and starting 24 in next row.
-        add di, 96
-        cmp di, (25 * 160)          ; If we go beyond the last row, we're over.
-        jb .loop
-
-    popa
-    ret
-
-; Joins the current tetramino to the stack, and any complete lines together.
-stack_join:
-    pusha
-    push es
-
-    push ds
-    pop es
-
-    mov dx, .merge
-    call tetramino_process
-
-    xor cx, cx
-    mov si, STACK
-
-    .loop_lines:
-        mov dl, 16
-        xor bl, bl
-
-        .line:
-            lodsb
-            test al, al
-            cmovz bx, dx        ; If it was a blank, set bl to non-zero value to indicate failure.
-
-            .next_iter:
-                dec dl
-                jnz .line
-
-        test bl, bl
-        jnz .next_line
-
-        std
-        pusha
-
-        mov di, si
-        sub si, 16
-        rep movsb
-
-        popa
-        cld
-
-        .next_line:
-            add cx, 16
-            cmp cx, 400
-            jb .loop_lines
-
-    .ret:
-        pop es
-        popa
-        ret
-
-    .merge:
-        or [di], al
-        ret
 
 ; All tetraminos in bitmap format.
 tetraminos:
