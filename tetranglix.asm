@@ -66,8 +66,9 @@ start:
     mov ax, 0x0F00
     rep stosw
 
-    mov si, STACK
-    mov eax, 0xDBDBDBDB
+    .borders:
+        mov si, STACK
+        mov eax, 0xDBDBDBDB
 
     .borders_init:
         mov dword [si - 3], eax
@@ -170,11 +171,11 @@ start:
 
             ; Join the tetramino, and join any complete lines.
             call stack_join
+            jmp .borders
 
         .next_iter:             
             ; Display the stack.
             call stack_display
-
             call tetramino_display
 
             jmp .event_loop
@@ -212,15 +213,16 @@ tetramino_load:
     ret
 
 ; Displays CUR_TETRAMINO at current OFFSET.
+;     si -> OFFSET.
 tetramino_display:
     pusha
  
     ; Calculate first index into screen.
-    mov al, [OFFSET + 1]
+    mov al, [si + 1]
     mov cl, 80
     mul cl
  
-    movzx di, byte [OFFSET]
+    movzx di, byte [si]
     shl di, 1
  
     add di, 24
@@ -297,7 +299,7 @@ tetramino_rotate:
     mov si, ROT_TETRAMINO
     mov di, CUR_TETRAMINO
     mov cl, 4*4/2       ; CH would be zero, from above.
-    rep ds movsw
+    rep movsw
 
     pop es
     popa
@@ -435,16 +437,13 @@ stack_join:
     mov si, STACK
 
     .loop_lines:
-        mov dl, 15
+        mov dl, 16
         xor bl, bl
 
         .line:
             lodsb
             test al, al
-            jnz .next_iter
-
-            ; Found a 'blank', this isn't it.
-            inc bl
+            cmovz bx, dx        ; If it was a blank, set bl to non-zero value to indicate failure.
 
             .next_iter:
                 dec dl
@@ -464,9 +463,7 @@ stack_join:
         cld
 
         .next_line:
-            add si, 16
             add cx, 16
-
             cmp cx, 400
             jb .loop_lines
 
@@ -482,12 +479,12 @@ stack_join:
 ; All tetraminos in bitmap format.
 tetraminos:
     dw 0b0000111100000000   ; I
-    ;dw 0b0000111000100000   ; J
-    ;dw 0b0000001011100000   ; L
-    ;dw 0b0000011001100000   ; O
-    ;dw 0b0000001101100000   ; S
-    ;dw 0b0000111001000000   ; T
-    ;dw 0b0000011000110000   ; Z
+    dw 0b0000111000100000   ; J
+    dw 0b0000001011100000   ; L
+    dw 0b0000011001100000   ; O
+    dw 0b0000001101100000   ; S
+    dw 0b0000111001000000   ; T
+    dw 0b0000011000110000   ; Z
 
 ; Padding.
 times 510 - ($ - $$)            db 0
