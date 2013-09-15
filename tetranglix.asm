@@ -16,9 +16,6 @@ RIGHT_SCANCODE  EQU 77
 UP_SCANCODE     EQU 72
 DOWN_SCANCODE   EQU 80
 
-; TODO: scoring (if plausible).
-;       README.md, release, ..., PROFIT!
-
 CPU 686
 
 ; Entry point.
