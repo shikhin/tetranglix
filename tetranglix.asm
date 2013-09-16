@@ -19,7 +19,6 @@ DOWN_SCANCODE   EQU 80
 CPU 686
 
 ; Entry point.
-;     dl    -> the drive number.
 ;     cs:ip -> linear address 0x7C00.
 start:
     jmp 0x0000:.CS_flush                    ; Some BIOS' may load us at 0x0000:0x7C00, while others at 0x07C0:0x0000.
@@ -83,7 +82,7 @@ start:
     sti
     .event_loop:
         mov bx, [0x046C]
-        add bx, 3           ; Wait for 3 PIT ticks.
+        add bx, 2           ; Wait for 2 PIT ticks.
 
         .busy_loop:
             cmp [0x046C], bx
@@ -479,6 +478,9 @@ tetraminos:
     dw 0b0000001101100000   ; S
     dw 0b0000111001000000   ; T
     dw 0b0000011000110000   ; Z
+
+; IT'S A SECRET TO EVERYBODY.
+db "ShNoXgSo"
 
 ; Padding.
 times 510 - ($ - $$)            db 0
