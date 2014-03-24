@@ -16,6 +16,8 @@ RIGHT_SCANCODE  EQU 77
 UP_SCANCODE     EQU 72
 DOWN_SCANCODE   EQU 80
 
+SCORE_DIGITS    EQU 5
+
 CPU 686
 
 ; Entry point.
@@ -27,7 +29,7 @@ start:
     ; Stack.
     mov ss, ax
     mov sp, 0xB800 ;why not
-    
+
     mov ds, ax
     mov es, ax
 
@@ -48,8 +50,8 @@ start:
     mov ax, 0x103                ; Some BIOS crash without the 03.
     int 0x10
 
-    push sp
-    pop es
+    mov es, sp
+    mov fs, sp
 
     ; White spaces on black background.
     xor di, di
@@ -65,12 +67,12 @@ start:
 tetramino_collision_check:
 
     lea bx, [bp + check_collision - tetramino_collision_check]
-    
+
 ; Processes the current tetramino, calling bx per "tetramino pixel".
 ;     bx -> where to call to; al contains tetramino pixel, di the address into stack.
 tetramino_process:
     pusha
-    
+
 ; Gets the offset into stack (i.e., address) into di.
 ;    si  -> points at OFFSET.
 ; Output:
@@ -86,57 +88,57 @@ tetramino_process:
     xchg bx, ax
     lea di, [si + (STACK - OFFSET) + 0xFE + bx]
     xchg bx, ax
-    
+
     mov si, CUR_TETRAMINO
-    
+
     mov cl, 0x10
-    
-    .loop
+
+    .loop:
         test cl, 0x13;0b1011
         jnz .load_loop
-        
+
         ; Go to next line in stack.
         add di, 16 - 4
-        
+
         .load_loop:
             lodsb
-            
+
             ; Call wherever the caller wants us to go.
             call bx
-            
+
             inc di
             loop .loop
-            
+
             popa
             ret
-            
+
 check_collision:
     cmp al, 0xDB
     jnz .clear_carry
-    
+
     cmp di, STACK + 400
     jae .colliding
-    
+
     cmp al, [di]
-    
-    .clear carry:
+
+    .clear_carry:
         clc
-        
+
     jne .next_iter
-    
+
     ; Colliding!
     .colliding:
-    
+
         stc
         mov cl, 1
     .next_iter:
         ret
-        
+
 ; Used by the stack joining part.
 merge:
     or [di], al
     ret
-    
+
 ; All tetraminos in bitmap format.
 tetraminos:
     db 0xF0;0b11110000   ; I
@@ -146,29 +148,29 @@ tetraminos:
     db 0x36;0b00110110   ; S
     db 0xE4;0b11100100   ; T
     db 0x63;0b01100011   ; Z
-    
+
 pop_check:
     pop bp                   ; Save some bytes.
-    
+
     .borders:
         mov si, STACK - 3
         mov ax, 0xDBDB
-        
+
     .borders_init:
         mov [si], ax
         mov [si + 2], ax
         mov [si + 4], ax
-        
+
         add si, 16
         cmp si, STACK + 400 - 3
         jbe .borders_init
-        
+
     ; Cleared dl implies "load new tetramino".
     xor dl, dl
 
     .event_loop:
         mov si, OFFSET
-        
+
         mov bx, [0x046C]
         inc bx
         inc bx              ; Wait for 2 PIT ticks.
@@ -185,7 +187,7 @@ pop_check:
 
         .choose_tetramino:
         rdtsc
-        
+
         ; Only 7 tetraminos, index as 1-7.
         and ax, 7
         je .choose_tetramino
@@ -205,7 +207,7 @@ pop_check:
         .loop_bitmap:
 
             shl dx, 1
-        
+
             ; If the bit we just shifted off was set, store 0xDB.
             sbb al, al
             and al, 0xDB
@@ -216,7 +218,7 @@ pop_check:
 
         ; Loaded.
         mov dl, 6
-        
+
         mov word [si], dx
         jmp .link_next_iter
 
@@ -247,7 +249,7 @@ pop_check:
             jne .rotate
 
             inc byte [si]
-            
+
         .call_bp:
             xor ah, LEFT_SCANCODE ^ RIGHT_SCANCODE
             call bp
@@ -304,19 +306,9 @@ pop_check:
             jc .rotate_loop
 
         .vertical_increment:
-            mov di, 8
-            
-            .chk_score:
-                dec di
-                dec di
-                mov al, '0'
-                xchg [es:di], al
-                or al, 0x30
-                cmp al, '9'
-                je .chk_score
-                inc ax
-                stosb
-                
+            mov cl, 1
+            call upd_score
+
             ; Check if we can go below one byte, successfully.
             inc byte [si + 1]
             call bp
@@ -348,13 +340,15 @@ pop_check:
                 .line:
                     lodsb
                     test al, al
-                    loope .line        ; If it was a blank, exit loop to indicate failure.
+                    loopnz .line        ; If it was a blank, exit loop to indicate failure.
 
-                jnz .next_line
+                jz .next_line
 
+                lea cx, [si - (STACK - 1)]
                 lea di, [si + 16]
-                inc si
                 rep movsb
+                mov cl, 64
+                call upd_score
 
                 .next_line:
                     pop si
@@ -400,27 +394,27 @@ pop_check:
             ;     si -> OFFSET.
 
             ; Calculate first index into screen.
-            mov al, [si + 1]
-            mov cl, 40
-            mul cl
+            mov bx, [si]
+            mov al, 40
+            mul bh
             mov cl, 12
-            add cl, [si]
+            add cl, bl
             add ax, cx
- 
+
             ; One character takes 2 bytes in video memory.
             shl ax, 2
             xchg di, ax
- 
+
             ; Loops for 16 input characters.
             mov cl, 0x10
             mov si, CUR_TETRAMINO
- 
+
             mov ah, 0x0F
-            
+
             .loop_tetramino:
                 test cl, 0x13;0b1011
                 jnz .load_tetramino
-        
+
                 ; Since each tetramino input is 4x4, we must go to next line
                 ; at every multiple of 4.
                 ; Since we output 2 characters for one input char, cover offset of 8.
@@ -429,15 +423,33 @@ pop_check:
                 .load_tetramino:
                     lodsb
                     test al, al
-                
+
                     ; Output two characters for "squarish" output.
                     cmovz ax, [es:di]
                     stosw
                     stosw
-                
+
                     loop .loop_tetramino
-                
+
             jmp .event_loop
+
+upd_score:
+    mov bx, SCORE_DIGITS * 2
+
+    .chk_score:
+        dec bx
+        dec bx
+        js $
+        mov al, '0'
+        xchg [fs:bx], al
+        or al, 0x30
+        cmp al, '9'
+        je .chk_score
+        inc ax
+        mov [fs:bx], al
+
+    loop upd_score
+    ret
 
 ; IT'S A SECRET TO EVERYBODY.
 db "ShNoXgSo"
