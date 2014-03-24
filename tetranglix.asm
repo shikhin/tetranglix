@@ -53,13 +53,8 @@ start:
 
     ; White spaces on black background.
     xor di, di
-    mov ax, 0x0F30
-    stosw
-    stosw
-    stosw
-    stosw ;4-digit score
-    xor al, al
-    mov cx, ax ;at least 80x25x2
+    mov ax, 0x0F00
+    mov cx, ax                   ; At least 80x25x2.
     rep stosw
     call pop_check
 
@@ -200,7 +195,7 @@ pop_check:
         xchg di, ax
 
         ; Load tetramino bitmap in dl.
-        mov dl, [ds:bp + di + (tetraminos - tetramino_collision_check) - 1]
+        mov dl, [cs:bp + di + (tetraminos - tetramino_collision_check) - 1]
         shl dx, 4
 
         ; Convert from bitmap to array.
@@ -222,7 +217,7 @@ pop_check:
         ; Loaded.
         mov dl, 6
         
-        mov word [si], dl
+        mov word [si], dx
         jmp .link_next_iter
 
         ; Check for input.
@@ -316,6 +311,7 @@ pop_check:
                 dec di
                 mov al, '0'
                 xchg [es:di], al
+                or al, 0x30
                 cmp al, '9'
                 je .chk_score
                 inc ax
@@ -329,7 +325,7 @@ pop_check:
 
             ; If we can't, we need a new tetramino.
             dec byte [si + 1]
-            je $ ; Game Over
+            je $                        ; Game Over
             cwd
 
             ; Joins the current tetramino to the stack, and any complete lines together.
@@ -339,7 +335,7 @@ pop_check:
             push ds
             pop es
 
-            mov bx, [bp + merge - tetramino_collision_check]
+            lea bx, [bp + merge - tetramino_collision_check]
             call tetramino_process
 
             mov si, STACK + 15
