@@ -51,6 +51,8 @@ include modifying line 86 to decrease or increase the difficulty.
 
 As an open challenge, we invite you all to add scoring support.
 
+*UPDATE*: Thanks to Peter (peterferrie), scoring has now been added, and the game halts on end.
+
 ## Authors
 
 While only nortti (JuEeHa) and shikhin (Shikhin) have pushed to the repository, XgF (oshepherd) has helped immensely by optimizing 
