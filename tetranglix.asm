@@ -186,7 +186,7 @@ pop_check:
         ; Load a tetramino to CUR_TETRAMINO, from the compressed bitmap format.
 
         .choose_tetramino:
-        rdtsc
+        in al,(0x40)
 
         ; Only 7 tetraminos, index as 1-7.
         and ax, 7
@@ -234,6 +234,13 @@ pop_check:
             ; Clear the keyboard buffer.
             xor ah, ah
             int 0x16
+
+        .exit:
+            cmp ah, 0x01
+            jne .left
+            mov ax,0x0002         ; Clear screen
+            int 0x10
+            int 0x20              ; Return to bootOS
 
         ; Go left.
         .left:
@@ -459,6 +466,3 @@ times 510 - ($ - $$)            db 0
 
 BIOS_signature:
     dw 0xAA55
-
-; Pad to floppy disk.
-times (1440 * 1024) - ($ - $$)  db 0
