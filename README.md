@@ -55,7 +55,7 @@ As an open challenge, we invite you all to add scoring support.
 
 ## Authors
 
-While only nortti (JuEeHa) and shikhin (Shikhin) have pushed to the repository, XgF (oshepherd) has helped immensely by optimizing 
-several parts of the game. sortiecat was responsible for testing it out regularly, and giving the original inspiration.
+While only nortti (JuEeHa) and shikhin have pushed to the repository, XgF has helped immensely by optimizing 
+several parts of the game. sortie was responsible for testing it out regularly, and giving the original inspiration.
 
-All authors hang out in `#osdev-offtopic`.
+All authors hang out in `#offtopia` (Libera.Chat).
